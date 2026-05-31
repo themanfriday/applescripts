@@ -1,39 +1,36 @@
 # Filter iPhone Contacts With No First Name (Apple Shortcuts)
 
-## Problem
+## Root Cause
 
-Using a **Filter Contacts** action with `First Name is (empty)` or similar returns zero results, even when contacts without a First Name exist.
+`Get First Name from Contacts` returns an **empty string `""`** when a contact has no first name — not `null`. So checking `does not have any value` always evaluates to `false`, because `""` is technically a value.
 
-**Root cause:** Contacts missing a First Name have a `null`/absent field — not an empty string. The Filter Contacts action cannot reliably match null field values in many iOS versions.
+| Contact state | What the action returns | `does not have any value` |
+|---|---|---|
+| Has first name "John" | `"John"` | false |
+| Has no first name | `""` (empty string) | **false** ← bug |
 
-## Working Solution: Repeat Loop
-
-Build this in the Shortcuts app:
+## Correct Solution
 
 ```
-1. Get All Contacts
-2. Set Variable "No First Name" → (empty, no value)
-3. Repeat with each item in Contacts
-4.   Get Details of Contacts → First Name → from Repeat Item
-5.   If [First Name result] does not have a value
-6.     Add Repeat Item to Variable "No First Name"
-7.   End If
-8. End Repeat
-9. Get Variable "No First Name"
+1.  Find Contacts (no filter)
+2.  Repeat with each item in Contacts
+3.    Get First Name from Repeat Item
+4.    Count Characters in First Name
+5.    If [Count] is 0
+6.      Add Repeat Item to MissingName
+7.    End If
+8.  End Repeat
+9.  Count Items in MissingName   ← use "Items", not "Characters"
+10. Show alert [Count]
+11. Show MissingName
 ```
 
-The result of step 9 is your list of contacts with no First Name.
+The character count of `""` is `0`, so `If [Count] is 0` correctly catches both null and empty-string first names.
 
-## Why Each Approach Fails or Works
+## What Was Wrong in the Original Shortcut
 
-| Approach | Result |
-|---|---|
-| Filter Contacts → First Name is "" | Returns nothing — matches empty string, not null |
-| Filter Contacts → First Name does not have a value | Returns nothing — Filter block bug with null contact fields |
-| Repeat loop + "does not have a value" on the extracted field | **Works** — evaluates null correctly at the individual field level |
+1. **`If First Name does not have any value` never triggered** — `Get First Name from Contacts` returns `""` (empty string) for missing first names, and `""` is not null, so the condition was always false.
 
-## Notes
+2. **Redundant first loop** — The `Find Contacts → Repeat → Add to AllContacts` loop just copies all contacts into a variable for no reason. Iterate directly over the `Find Contacts` output instead.
 
-- "Get Details of Contacts → First Name" extracts just the first name field from each contact.
-- The `does not have a value` check in an **If** block correctly handles null, unlike the Filter block.
-- This approach is slower on large contact lists (it loops one by one) but is the only reliable method.
+3. **`Count Characters in MissingName`** — Counts characters across all contact name strings, not the number of contacts. Use `Count Items` to get the contact count.
